@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
-	"net/http"
 	"log"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
-type Rec struct {
+type discount struct {
 	Title       string
 	Description string
 	Thumb       string
@@ -17,12 +18,16 @@ type Rec struct {
 	Currency    string
 }
 
+type recsRequest struct {
+	RegionID int64
+	UserID   int64
+}
 
 func main() {
 	router := gin.Default()
 
 	router.GET("/v1/recs", recsV1)
-	router.GET("/v1/click", clickV1)
+	router.POST("/v1/click", clickV1)
 
 	router.Run()
 }
@@ -30,7 +35,23 @@ func main() {
 // Взять у бандита рекомендации,
 // соорудить из этого ответ в жсоне:
 func recsV1(c *gin.Context) {
-	resp, err := http.Get("http://localhost:4000/recs/300")
+
+	discounts, err := getLatestDiscounts(100)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "server error",
+		})
+		return
+	}
+
+	if len(discounts) == 0 {
+		c.JSON(http.StatusNoContent, gin.H{
+			"message": "no discounts",
+		})
+		return
+	}
+
+	resp, err := http.Get("http://localhost:4000/recs/100")
 	if err != nil {
 		c.JSON(500, gin.H{
 			"message": "error",
@@ -39,15 +60,22 @@ func recsV1(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	for true {
-        bs := make([]byte, 1014)
-        n, err := resp.Body.Read(bs)
-        log.Println("message from bandit: " + string(bs[:n]))
+	if resp.StatusCode != 200 {
+		c.JSON(404, gin.H{
+			"message": "recs not found",
+		})
+		return
+	}
 
-        if n == 0 || err != nil{
-            break
-        }
-    }
+	for true {
+		bs := make([]byte, 1014)
+		n, err := resp.Body.Read(bs)
+		log.Println("message from bandit: " + string(bs[:n]))
+
+		if n == 0 || err != nil {
+			break
+		}
+	}
 
 	c.JSON(200, gin.H{
 		"message": "feed!",
@@ -58,4 +86,10 @@ func clickV1(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"message": "click",
 	})
+}
+
+func getLatestDiscounts(limit int) ([]*discount, error) {
+	list := make([]*discount, limit)
+
+	return list, nil
 }

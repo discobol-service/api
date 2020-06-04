@@ -13,16 +13,23 @@ import (
 	"github.com/jackc/pgx"
 )
 
-type discount struct {
-	UDID        string  `json:"udid"`
-	Title       string  `json:"title"`
-	Description string  `json:"description"`
-	Thumb       string  `json:"thumb"`
-	Type        int64   `json:"type"`
-	URL         string  `json:"url"`
-	AmountFrom  float64 `json:"amount_from"`
-	AmountTo    float64 `json:"amount_to"`
-	Currency    string  `json:"currency"`
+// Rec - ...
+type Rec struct {
+	UDID        string   `json:"udid"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Thumb       string   `json:"thumb"`
+	Type        int64    `json:"type"`
+	URL         string   `json:"url"`
+	AmountFrom  float64  `json:"amount_from"`
+	AmountTo    float64  `json:"amount_to"`
+	Currency    string   `json:"currency"`
+	SellerName  string   `json:"seller_name"`
+	SellerSite  string   `json:"seller_site"`
+	SellerLogo  string   `json:"seller_logo"`
+	Brands      []string `json:"brands"`
+	Tags        []string `json:"tags"`
+	//Meta []interface{} `json:"meta"`
 }
 
 type recsRequest struct {
@@ -60,7 +67,7 @@ func main() {
 // соорудить из этого ответ в жсоне:
 func recsV1(c *gin.Context) {
 	// Получить данные сначала из базы
-	discountsMap, err := getLatestDiscounts(100, c.DefaultQuery("domain", "default"))
+	recsMap, err := getLatestRecs(100, c.DefaultQuery("domain", "default"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "server error",
@@ -68,15 +75,15 @@ func recsV1(c *gin.Context) {
 		return
 	}
 
-	if len(discountsMap) == 0 {
+	if len(recsMap) == 0 {
 		c.JSON(http.StatusNoContent, gin.H{
-			"message": "no discounts",
+			"message": "no recs",
 		})
 		return
 	}
 
-	arms := make([]string, 0, len(discountsMap))
-	for k := range discountsMap {
+	arms := make([]string, 0, len(recsMap))
+	for k := range recsMap {
 		arms = append(arms, k)
 	}
 
@@ -119,9 +126,9 @@ func recsV1(c *gin.Context) {
 		return
 	}
 
-	var recs = make([]discount, 0, len(stat))
+	var recs = make([]Rec, 0, len(stat))
 	for _, s := range stat {
-		recs = append(recs, *discountsMap[s.Arm])
+		recs = append(recs, *recsMap[s.Arm])
 	}
 
 	log.Printf("recs = %+v", recs)
@@ -129,20 +136,31 @@ func recsV1(c *gin.Context) {
 	c.JSON(http.StatusOK, recs)
 }
 
-func getLatestDiscounts(limit int, domain string) (map[string]*discount, error) {
-	dbRecsMap := make(map[string]*discount)
+func getLatestRecs(limit int, domain string) (map[string]*Rec, error) {
+	dbRecsMap := make(map[string]*Rec)
 
 	sql := `
 
 		select
-			udid,
-			title, description,
-			thumb, type, url,
-			amount_from, amount_to,
-			currency
+			d.udid, d.title, d.description,
+			d.thumb, d.type, d.url,
+			d.amount_from, d.amount_to,
+			d.currency, 
+
+			d.brands, d.tags,
+			
+			s.name as seller_name,
+			s.site as seller_site,
+			s.logo as seller_logo
 		from discounts d
 		join regions r on r.id = d.region_id 
-		where r.name = $1
+		join sellers s on s.id = d.seller_id
+		where 
+			r.name = $1 and 
+			d.is_deleted = false and 
+			d.is_active = true and
+			s.is_deleted = false and
+			s.is_active = true
 		order by ctime desc 
 		limit $2
 	
@@ -151,16 +169,23 @@ func getLatestDiscounts(limit int, domain string) (map[string]*discount, error) 
 	rows, err := db.Query(context.Background(), sql, domain, limit)
 	if err != nil {
 		log.Println("Database error: " + err.Error())
-		os.Exit(0)
+		return dbRecsMap, err
 	}
 
 	for rows.Next() {
-		d := new(discount)
-		if err = rows.Scan(&d.UDID, &d.Title, &d.Description, &d.Thumb, &d.Type, &d.URL, &d.AmountFrom, &d.AmountTo, &d.Currency); err != nil {
-			log.Fatal(err.Error())
+		r := new(Rec)
+		err = rows.Scan(
+			&r.UDID, &r.Title, &r.Description, &r.Thumb, &r.Type, &r.URL,
+			&r.AmountFrom, &r.AmountTo, &r.Currency, &r.Brands, &r.Tags,
+			&r.SellerName, &r.SellerSite, &r.SellerLogo,
+		)
+
+		if err != nil {
+			log.Println(err.Error())
+			return dbRecsMap, err
 		}
 
-		dbRecsMap[d.UDID] = d
+		dbRecsMap[r.UDID] = r
 	}
 
 	return dbRecsMap, nil

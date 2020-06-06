@@ -45,7 +45,7 @@ type banditStat struct {
 var db *pgx.Conn
 
 func init() {
-	conn, err := pgx.Connect(context.Background(), "postgresql://shootnix:12345@localhost/discobol")
+	conn, err := pgx.Connect(context.Background(), os.Getenv("DISCOBOL_DBSTR"))
 	if err != nil {
 		log.Printf("Unable to connect to database: %v\n", err.Error())
 		os.Exit(1)
@@ -145,25 +145,25 @@ func getLatestRecs(limit int, domain string) (map[string]*Rec, error) {
 			d.udid, d.title, d.description,
 			d.thumb, d.type, d.url,
 			d.amount_from, d.amount_to,
-			d.currency, 
+			d.currency,
 
 			d.brands, d.tags,
-			
+
 			s.name as seller_name,
 			s.site as seller_site,
 			s.logo as seller_logo
 		from discounts d
-		join regions r on r.id = d.region_id 
+		join regions r on r.id = d.region_id
 		join sellers s on s.id = d.seller_id
-		where 
-			r.name = $1 and 
-			d.is_deleted = false and 
+		where
+			r.name = $1 and
+			d.is_deleted = false and
 			d.is_active = true and
 			s.is_deleted = false and
 			s.is_active = true
-		order by ctime desc 
+		order by ctime desc
 		limit $2
-	
+
 	`
 
 	rows, err := db.Query(context.Background(), sql, domain, limit)

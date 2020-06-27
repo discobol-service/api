@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx"
@@ -29,6 +30,8 @@ type Rec struct {
 	SellerLogo  string   `json:"seller_logo"`
 	Brands      []string `json:"brands"`
 	Tags        []string `json:"tags"`
+	Weight      int64    `json:"weight"`
+	Scores      float64  `json:"scores"`
 	//Meta []interface{} `json:"meta"`
 }
 
@@ -128,8 +131,14 @@ func recsV1(c *gin.Context) {
 
 	var recs = make([]Rec, 0, len(stat))
 	for _, s := range stat {
-		recs = append(recs, *recsMap[s.Arm])
+		rec := *recsMap[s.Arm]
+		rec.Scores = float64(rec.Weight) + s.Scores
+		recs = append(recs, rec)
 	}
+
+	sort.Slice(recs, func(i, j int) bool {
+		return recs[i].Scores > recs[j].Scores
+	})
 
 	log.Printf("recs = %+v", recs)
 
@@ -147,7 +156,7 @@ func getLatestRecs(limit int, domain string) (map[string]*Rec, error) {
 			d.amount_from, d.amount_to,
 			d.currency,
 
-			d.brands, d.tags,
+			d.brands, d.tags, d.weight,
 
 			s.name as seller_name,
 			s.site as seller_site,
@@ -176,7 +185,7 @@ func getLatestRecs(limit int, domain string) (map[string]*Rec, error) {
 		r := new(Rec)
 		err = rows.Scan(
 			&r.UDID, &r.Title, &r.Description, &r.Thumb, &r.Type, &r.URL,
-			&r.AmountFrom, &r.AmountTo, &r.Currency, &r.Brands, &r.Tags,
+			&r.AmountFrom, &r.AmountTo, &r.Currency, &r.Brands, &r.Tags, &r.Weight,
 			&r.SellerName, &r.SellerSite, &r.SellerLogo,
 		)
 
